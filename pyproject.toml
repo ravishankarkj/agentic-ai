@@ -1,0 +1,35 @@
+[project]
+name = "brain-box-with-ai"
+version = "0.1.0"
+description = "FastAPI + LangChain RAG app with Confluence ingestion, hybrid retrieval, and Gradio test UI"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+	"atlassian-python-api>=3.41.13",
+	"chromadb>=1.0.15",
+	"fastapi>=0.116.0",
+	"gradio>=5.38.0",
+	"httpx>=0.28.1",
+	"langchain>=0.3.26",
+	"langchain-chroma>=0.2.4",
+	"langchain-community>=0.3.27",
+	"langchain-openai>=0.3.28",
+	"langchain-ollama>=0.2.3",
+	"langchain-text-splitters>=0.3.8",
+	"lxml>=6.0.0",
+	"pydantic-settings>=2.10.1",
+	"python-dotenv>=1.1.1",
+	"rank-bm25>=0.2.2",
+	"uvicorn>=0.35.0",
+	"langchain-classic>=1.0.8",
+	"langchain-ibm>=1.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+	"ruff>=0.12.2",
+]
+
+[project.scripts]
+run-api = "app.main:run_api"
+run-gradio = "app.ui.gradio_app:launch"
