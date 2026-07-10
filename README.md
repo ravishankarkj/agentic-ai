@@ -39,20 +39,26 @@ A local-first RAG application with:
 
 By default API runs on localhost:8000 and Gradio on localhost:7860.
 
-## Deploy To Render
+## Deploy To Render (Web Service - Free)
 
-This repository includes [render.yaml](render.yaml) for Render Blueprint deployment.
+Use Render "Web Service" deployment (not Blueprint) to stay on free tier.
 
 1. Push this repository to GitHub.
-2. In Render, create a new Blueprint and select the repository.
-3. Render will apply `render.yaml` and create the web service.
-4. Add all required environment variables in Render dashboard (Confluence, LLM, callback, etc.).
+2. In Render, click `New` -> `Web Service`.
+3. Connect your GitHub repository and choose the branch.
+4. Configure service:
+	- Environment: `Python 3`
+	- Build Command: `pip install uv && uv sync`
+	- Start Command: `uv run python -m app.main`
+5. Choose free instance type.
+6. Add all required environment variables in Render dashboard (Confluence, LLM, callback, etc.).
+7. Deploy.
 
 Key runtime behavior:
 
 - API host binds to `HOST` (default `0.0.0.0`).
 - API port binds to `PORT` (required by Render).
-- Start command is `uv run python -m app.main`.
+- Start command runs `app.main`, which boots Uvicorn.
 
 ## REST Endpoints
 
