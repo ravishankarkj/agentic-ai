@@ -1,4 +1,5 @@
 import logging
+from collections.abc import AsyncIterator
 
 from langchain_core.documents import Document
 from langchain_core.output_parsers import StrOutputParser
@@ -36,3 +37,20 @@ Question:
         answer = chain.invoke({"context": context, "question": query})
         logger.info("Answer generation completed. context_docs=%s", len(docs))
         return answer, docs
+
+    def retrieve_context(self, query: str) -> list[Document]:
+        logger.info("Retrieving context for query.")
+        docs = self._retrieval_service.retrieve(query)
+        logger.info("Context retrieval completed. context_docs=%s", len(docs))
+        return docs
+
+    async def stream_answer(self, query: str, docs: list[Document]) -> AsyncIterator[str]:
+        logger.info("Streaming answer for query.")
+        context = "\n\n".join(doc.page_content for doc in docs)
+        chain = self._prompt | self._chat_model | StrOutputParser()
+
+        async for chunk in chain.astream({"context": context, "question": query}):
+            if chunk:
+                yield chunk
+
+        logger.info("Answer streaming completed. context_docs=%s", len(docs))

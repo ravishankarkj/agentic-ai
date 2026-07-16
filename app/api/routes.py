@@ -6,6 +6,22 @@ from app.api.schemas import IngestRequest, IngestResponse, QueryRequest, QueryRe
 router = APIRouter()
 
 
+def _build_sources(docs) -> list[SourceDocument]:
+    sources: list[SourceDocument] = []
+    for doc in docs:
+        link = doc.metadata.get("source")
+        label = str(doc.metadata.get("title") or doc.metadata.get("id") or link or "unknown")
+        sources.append(
+            SourceDocument(
+                source=label,
+                link=str(link) if link else None,
+                score=doc.metadata.get("score"),
+                snippet=doc.page_content[:300],
+            )
+        )
+    return sources
+
+
 @router.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -28,16 +44,23 @@ async def query_knowledge(
     if not container.vector_repo.is_ready():
         raise HTTPException(status_code=400, detail="No indexed documents found. Call /api/v1/ingest first.")
 
-    answer, docs = container.qa_service.answer(request.query)
+    docs = container.qa_service.retrieve_context(request.query)
+    sources = _build_sources(docs)
 
-    sources = [
-        SourceDocument(
-            source=str(doc.metadata.get("source") or doc.metadata.get("id") or "unknown"),
-            score=doc.metadata.get("score"),
-            snippet=doc.page_content[:300],
+    answer_chunks: list[str] = []
+    sequence = 0
+    async for chunk in container.qa_service.stream_answer(request.query, docs):
+        answer_chunks.append(chunk)
+        await container.response_dispatcher.dispatch_stream_chunk(
+            request_id=request.requestId,
+            user_id=request.userId,
+            query=request.query,
+            chunk=chunk,
+            sequence=sequence,
         )
-        for doc in docs
-    ]
+        sequence += 1
+
+    answer = "".join(answer_chunks)
 
     response = QueryResponse(
         requestId=request.requestId,
@@ -45,7 +68,12 @@ async def query_knowledge(
         response=QueryResult(query=request.query, answer=answer, sources=sources),
     )
 
-    # Placeholder outbound transport for downstream integration.
-    await container.response_dispatcher.dispatch(response.model_dump())
+    await container.response_dispatcher.dispatch_sources(
+        request_id=request.requestId,
+        user_id=request.userId,
+        query=request.query,
+        answer=answer,
+        sources=[source.model_dump() for source in sources],
+    )
 
     return response

@@ -1,5 +1,6 @@
 import base64
 import logging
+from typing import Any
 
 import httpx
 
@@ -51,30 +52,81 @@ class ResponseDispatcher:
         headers["Authorization"] = f"Basic {credentials}"
         return headers
 
+    async def _post_payload(self, payload: dict[str, Any]) -> None:
+        async with httpx.AsyncClient(timeout=self._settings.response_callback_timeout_seconds) as client:
+            response = await client.post(
+                self._settings.response_callback_url,
+                json=payload,
+                headers=self._build_headers(),
+            )
+            logger.info(
+                "Dispatched response payload to callback URL. status=%s url=%s",
+                response.status_code,
+                str(response.request.url),
+            )
+            if response.is_error:
+                logger.error(
+                    "Callback request failed before raise_for_status. status=%s response_body=%s",
+                    response.status_code,
+                    response.text,
+                )
+            response.raise_for_status()
+            logger.info(
+                "Successfully dispatched response payload to callback URL. Status code: %s, response_body=%s",
+                response.status_code,
+                response.text,
+            )
+
+    async def dispatch_stream_chunk(
+        self,
+        *,
+        request_id: str,
+        user_id: str,
+        query: str,
+        chunk: str,
+        sequence: int,
+    ) -> None:
+        await self.dispatch(
+            {
+                "event": "token",
+                "requestId": request_id,
+                "userId": user_id,
+                "response": {
+                    "query": query,
+                    "chunk": chunk,
+                    "sequence": sequence,
+                },
+            }
+        )
+
+    async def dispatch_sources(
+        self,
+        *,
+        request_id: str,
+        user_id: str,
+        query: str,
+        answer: str,
+        sources: list[dict[str, Any]],
+    ) -> None:
+        await self.dispatch(
+            {
+                "event": "sources",
+                "requestId": request_id,
+                "userId": user_id,
+                "response": {
+                    "query": query,
+                    "answer": answer,
+                    "sources": sources,
+                },
+            }
+        )
+
     async def dispatch(self, payload: dict) -> None:
         if not self._settings.response_callback_url:
             logger.info("RESPONSE_CALLBACK_URL is not configured. Skipping outbound dispatch.")
             return
 
         try:
-            async with httpx.AsyncClient(timeout=self._settings.response_callback_timeout_seconds) as client:
-                response = await client.post(
-                    self._settings.response_callback_url,
-                    json=payload,
-                    headers=self._build_headers(),
-                )
-                logger.info(
-                    "Dispatched response payload to callback URL. status=%s url=%s",
-                    response.status_code,
-                    str(response.request.url),
-                )
-                if response.is_error:
-                    logger.error(
-                        "Callback request failed before raise_for_status. status=%s response_body=%s",
-                        response.status_code,
-                        response.text,
-                    )
-                response.raise_for_status()
-                logger.info("Successfully dispatched response payload to callback URL. Status code: %s, response_body=%s", response.status_code, response.text)
+            await self._post_payload(payload)
         except Exception:
             logger.exception("Failed to dispatch response payload to callback URL")

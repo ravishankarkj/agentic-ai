@@ -19,6 +19,7 @@ class QueryRequest(BaseModel):
 
 class SourceDocument(BaseModel):
     source: str
+    link: str | None = None
     score: float | None = None
     snippet: str
 
