@@ -21,6 +21,7 @@ class Settings(BaseSettings):
 
     llm_provider: Literal["ollama", "openai"] = "ollama"
     embedding_provider: Literal["ollama", "openai", "watsonx"] = "watsonx"
+    truncate_input_tokens: int = 512
 
     ollama_base_url: str = ""
     ollama_api_key: str = ""
@@ -37,7 +38,7 @@ class Settings(BaseSettings):
     watsonx_api_key: str
     watsonx_embedding_model: str = "ibm/granite-embedding-278m-multilingual"
 
-    chunk_size: int = 1200
+    chunk_size: int = 1100
     chunk_overlap: int = 200
     top_k: int = 6
     dense_weight: float = 0.7
@@ -65,7 +66,7 @@ class Settings(BaseSettings):
     @field_validator("chunk_overlap")
     @classmethod
     def validate_overlap(cls, value: int, info):
-        chunk_size = info.data.get("chunk_size", 1200)
+        chunk_size = info.data.get("chunk_size", 1100)
         if value >= chunk_size:
             raise ValueError("chunk_overlap must be smaller than chunk_size")
         return value
