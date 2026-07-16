@@ -5,6 +5,7 @@ from langchain_core.embeddings import Embeddings
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_ollama import ChatOllama, OllamaEmbeddings
 from langchain_ibm import WatsonxEmbeddings
+from ibm_watsonx_ai.metanames import EmbedTextParamsMetaNames
 
 from app.config.settings import Settings
 
@@ -36,7 +37,7 @@ class LLMFactory:
                 model=self._settings.ollama_chat_model,
                 base_url=self._settings.ollama_base_url,
                 client_kwargs=client_kwargs or None,
-                temperature=0,
+                temperature=0.5,
             )
 
         # Lazy import keeps OpenAI provider optional at runtime.
@@ -51,10 +52,16 @@ class LLMFactory:
 
     def create_embeddings(self) -> Embeddings:
         if self._settings.embedding_provider == "watsonx":
-            client_kwargs: dict[str, Any] = {}
-            headers = self._ollama_headers()
-            if headers:
-                client_kwargs["headers"] = headers
+            # client_kwargs: dict[str, Any] = {}
+            # headers = self._ollama_headers()
+            # if headers:
+            #     client_kwargs["headers"] = headers
+
+            embed_params = {
+                EmbedTextParamsMetaNames.TRUNCATE_INPUT_TOKENS: self._settings.truncate_input_tokens,  # Truncate text past 512 tokens
+                EmbedTextParamsMetaNames.RETURN_OPTIONS: {"input_text": False} 
+            }
+
 
             logger.info(
                 "Initializing Watsonx embedding model. model=%s url=%s",
@@ -66,6 +73,7 @@ class LLMFactory:
                 url=self._settings.watsonx_url,
                 project_id=self._settings.watsonx_project_id,
                 api_key=self._settings.watsonx_api_key,
+                params=embed_params
             )
             # return OllamaEmbeddings(
             #     model=self._settings.ollama_embedding_model,
