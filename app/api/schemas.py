@@ -14,6 +14,7 @@ class IngestResponse(BaseModel):
 class QueryRequest(BaseModel):
     requestId: str = "req-12345"
     userId: str = "005xx000001SvU"
+    sessionId: str | None = None
     query: str = Field(min_length=2, max_length=5000)
 
 
@@ -26,6 +27,7 @@ class SourceDocument(BaseModel):
 
 class QueryResult(BaseModel):
     query: str
+    standaloneQuery: str
     answer: str
     sources: list[SourceDocument]
 
@@ -33,4 +35,5 @@ class QueryResult(BaseModel):
 class QueryResponse(BaseModel):
     requestId: str
     userId: str
+    sessionId: str
     response: QueryResult

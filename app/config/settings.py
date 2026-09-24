@@ -25,7 +25,7 @@ class Settings(BaseSettings):
 
     ollama_base_url: str = ""
     ollama_api_key: str = ""
-    ollama_chat_model: str = "gemma3"
+    ollama_chat_model: str = "gemma4"
     ollama_embedding_model: str = "nomic-embed-text"
 
     openai_api_key: str = ""
@@ -47,13 +47,21 @@ class Settings(BaseSettings):
     vector_store_dir: str = ".data/chroma"
     vector_collection_name: str = "confluence_docs"
 
+    conversation_max_turns: int = 6
+    conversation_ttl_minutes: float = 60.0
+
     response_callback_url: str = "http://127.0.0.1:8000"
     response_callback_timeout_seconds: float = 10.0
-    response_callback_auth_mode: Literal["none", "basic", "bearer"] = "none"
+    response_callback_auth_mode: Literal["none", "basic", "bearer", "oauth"] = "none"
     response_callback_username: str = ""
     response_callback_password: str = ""
     response_callback_token: str = ""
     response_callback_bearer_token: str = ""
+    response_callback_token_url: str = ""
+    response_callback_client_id: str = ""
+    response_callback_client_secret: str = ""
+    response_callback_token_ttl_seconds: float = 3600.0
+    response_callback_token_refresh_leeway_seconds: float = 60.0
 
     @property
     def confluence_space_keys_list(self) -> list[str]:

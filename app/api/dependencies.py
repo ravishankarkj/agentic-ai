@@ -4,6 +4,7 @@ from functools import lru_cache
 from app.clients.confluence_client import ConfluenceClient
 from app.clients.llm_factory import LLMFactory
 from app.config.settings import Settings, get_settings
+from app.services.conversation_store import ConversationStore
 from app.services.ingestion_service import IngestionService
 from app.services.qa_service import QAService
 from app.services.response_dispatcher import ResponseDispatcher
@@ -18,6 +19,7 @@ class ServiceContainer:
     qa_service: QAService
     vector_repo: VectorStoreRepository
     response_dispatcher: ResponseDispatcher
+    conversation_store: ConversationStore
 
 
 @lru_cache(maxsize=1)
@@ -47,6 +49,10 @@ def get_container() -> ServiceContainer:
     retrieval_service = RetrievalService(vector_repo=vector_repo)
     qa_service = QAService(retrieval_service=retrieval_service, chat_model=chat_model)
     dispatcher = ResponseDispatcher(settings=settings)
+    conversation_store = ConversationStore(
+        max_turns=settings.conversation_max_turns,
+        ttl_seconds=settings.conversation_ttl_minutes * 60,
+    )
 
     return ServiceContainer(
         settings=settings,
@@ -54,4 +60,5 @@ def get_container() -> ServiceContainer:
         qa_service=qa_service,
         vector_repo=vector_repo,
         response_dispatcher=dispatcher,
+        conversation_store=conversation_store,
     )

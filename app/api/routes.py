@@ -3,6 +3,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.api.dependencies import ServiceContainer, get_container
 from app.api.schemas import IngestRequest, IngestResponse, QueryRequest, QueryResponse, QueryResult, SourceDocument
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
 
 
@@ -44,28 +48,44 @@ async def query_knowledge(
     if not container.vector_repo.is_ready():
         raise HTTPException(status_code=400, detail="No indexed documents found. Call /api/v1/ingest first.")
 
-    docs = container.qa_service.retrieve_context(request.query)
+    session_id = request.sessionId or request.userId
+    history = container.conversation_store.get_history(session_id)
+    standalone_query = await container.qa_service.condense_question(request.query, history)
+    logger.info("Standalone query generated: %s", standalone_query)
+
+    docs = container.qa_service.retrieve_context(standalone_query)
     sources = _build_sources(docs)
 
     answer_chunks: list[str] = []
     sequence = 0
-    async for chunk in container.qa_service.stream_answer(request.query, docs):
+    async for chunk in container.qa_service.stream_answer(standalone_query, docs, history):
         answer_chunks.append(chunk)
-        await container.response_dispatcher.dispatch_stream_chunk(
-            request_id=request.requestId,
-            user_id=request.userId,
-            query=request.query,
-            chunk=chunk,
-            sequence=sequence,
-        )
-        sequence += 1
+        # logger.info("Streaming chunk received: %s", chunk)
+        # await container.response_dispatcher.dispatch_stream_chunk(
+        #     request_id=request.requestId,
+        #     user_id=request.userId,
+        #     query=request.query,
+        #     chunk=chunk,
+        #     sequence=sequence,
+        # )
+        # sequence += 1
 
     answer = "".join(answer_chunks)
+    # logger.info("answer = \n\n%s", answer)
+    # logger.info("Query = \n\n%s", request.query)
+
+    container.conversation_store.append_turn(session_id, request.query, answer)
 
     response = QueryResponse(
         requestId=request.requestId,
         userId=request.userId,
-        response=QueryResult(query=request.query, answer=answer, sources=sources),
+        sessionId=session_id,
+        response=QueryResult(
+            query=request.query,
+            standaloneQuery=standalone_query,
+            answer=answer,
+            sources=sources,
+        ),
     )
 
     await container.response_dispatcher.dispatch_sources(
@@ -77,3 +97,9 @@ async def query_knowledge(
     )
 
     return response
+
+
+@router.delete("/api/v1/session/{session_id}")
+def reset_session(session_id: str, container: ServiceContainer = Depends(get_container)) -> dict[str, str]:
+    container.conversation_store.clear(session_id)
+    return {"status": "cleared", "sessionId": session_id}

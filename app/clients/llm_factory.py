@@ -37,7 +37,7 @@ class LLMFactory:
                 model=self._settings.ollama_chat_model,
                 base_url=self._settings.ollama_base_url,
                 client_kwargs=client_kwargs or None,
-                temperature=0.5,
+                temperature=0.3,
             )
 
         # Lazy import keeps OpenAI provider optional at runtime.

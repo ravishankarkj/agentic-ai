@@ -1,3 +1,5 @@
+import uuid
+
 import gradio as gr
 import httpx
 
@@ -29,9 +31,20 @@ async def force_reembed_docs() -> str:
     return await _ingest_docs(force_reembed=True)
 
 
-async def ask_question(query: str, request_id: str, user_id: str) -> tuple[str, str]:
+def new_session_id() -> str:
+    return f"sess-{uuid.uuid4().hex[:12]}"
+
+
+async def ask_question(
+    query: str,
+    history: list[dict[str, str]] | None,
+    session_id: str,
+    request_id: str,
+    user_id: str,
+) -> tuple[list[dict[str, str]], str, str]:
+    messages = list(history or [])
     if not query.strip():
-        return "", "Please enter a query."
+        return messages, query, "Please enter a query."
 
     try:
         async with httpx.AsyncClient(timeout=120.0) as client:
@@ -40,6 +53,7 @@ async def ask_question(query: str, request_id: str, user_id: str) -> tuple[str, 
                 json={
                     "requestId": request_id or DEFAULT_REQUEST_ID,
                     "userId": user_id or DEFAULT_USER_ID,
+                    "sessionId": session_id,
                     "query": query,
                 },
             )
@@ -47,12 +61,29 @@ async def ask_question(query: str, request_id: str, user_id: str) -> tuple[str, 
             payload = response.json()
 
         response_payload = payload.get("response", {})
+        answer = response_payload.get("answer", "")
         sources_text = "\n\n".join(
             f"Source: {item['source']}\nSnippet: {item['snippet']}" for item in response_payload.get("sources", [])
         )
-        return response_payload.get("answer", ""), sources_text
+        standalone = response_payload.get("standaloneQuery", "")
+        if standalone and standalone != query:
+            sources_text = f"Standalone question: {standalone}\n\n{sources_text}"
     except Exception as exc:
-        return "", f"Query failed: {exc}"
+        answer = f"Query failed: {exc}"
+        sources_text = ""
+
+    messages.append({"role": "user", "content": query})
+    messages.append({"role": "assistant", "content": answer})
+    return messages, "", sources_text
+
+
+async def reset_chat(session_id: str) -> tuple[list[dict[str, str]], str, str]:
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            await client.delete(f"{API_BASE_URL}/api/v1/session/{session_id}")
+    except Exception:
+        pass
+    return [], new_session_id(), ""
 
 
 def build_ui() -> gr.Blocks:
@@ -65,19 +96,27 @@ def build_ui() -> gr.Blocks:
             force_ingest_button = gr.Button("Force Ingest Docs", variant="stop")
             ingest_output = gr.Textbox(label="Ingestion Status")
 
-        query_input = gr.Textbox(label="Question", lines=4, placeholder="Ask something from Confluence knowledge")
+        session_state = gr.State(value=new_session_id)
+        chatbot = gr.Chatbot(label="Conversation", height=420)
+        query_input = gr.Textbox(label="Question", lines=3, placeholder="Ask something from Confluence knowledge")
+        with gr.Row():
+            ask_button = gr.Button("Ask", variant="primary")
+            new_chat_button = gr.Button("New Chat")
         request_id_input = gr.Textbox(label="Request ID", value=DEFAULT_REQUEST_ID)
         user_id_input = gr.Textbox(label="User ID", value=DEFAULT_USER_ID)
-        ask_button = gr.Button("Ask")
-        answer_output = gr.Textbox(label="Answer", lines=8)
         sources_output = gr.Textbox(label="Retrieved Sources", lines=12)
 
         ingest_button.click(fn=ingest_docs, outputs=[ingest_output])
         force_ingest_button.click(fn=force_reembed_docs, outputs=[ingest_output])
-        ask_button.click(
-            fn=ask_question,
-            inputs=[query_input, request_id_input, user_id_input],
-            outputs=[answer_output, sources_output],
+
+        ask_inputs = [query_input, chatbot, session_state, request_id_input, user_id_input]
+        ask_outputs = [chatbot, query_input, sources_output]
+        ask_button.click(fn=ask_question, inputs=ask_inputs, outputs=ask_outputs)
+        query_input.submit(fn=ask_question, inputs=ask_inputs, outputs=ask_outputs)
+        new_chat_button.click(
+            fn=reset_chat,
+            inputs=[session_state],
+            outputs=[chatbot, session_state, sources_output],
         )
 
     return demo

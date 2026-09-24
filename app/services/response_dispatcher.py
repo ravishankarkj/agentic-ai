@@ -4,6 +4,7 @@ from typing import Any
 
 import httpx
 
+from app.clients.token_provider import OAuthTokenProvider
 from app.config.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -12,13 +13,20 @@ logger = logging.getLogger(__name__)
 class ResponseDispatcher:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
+        self._token_provider = OAuthTokenProvider(settings)
 
-    def _build_headers(self) -> dict[str, str]:
+    async def _build_headers(self) -> tuple[dict[str, str], str | None]:
+        """Returns the request headers plus the bearer token used, so it can be invalidated on a 401."""
         headers = {"Content-Type": "application/json"}
         auth_mode = self._settings.response_callback_auth_mode.lower()
 
         if auth_mode == "none":
-            return headers
+            return headers, None
+
+        if auth_mode == "oauth":
+            token = await self._token_provider.get_token()
+            headers["Authorization"] = f"Bearer {token}"
+            return headers, token
 
         if auth_mode == "bearer":
             bearer_token = self._settings.response_callback_bearer_token.strip()
@@ -27,13 +35,13 @@ class ResponseDispatcher:
                     "Bearer callback auth is enabled but RESPONSE_CALLBACK_BEARER_TOKEN is empty. "
                     "Sending request without Authorization header."
                 )
-                return headers
+                return headers, None
             headers["Authorization"] = f"Bearer {bearer_token}"
-            return headers
+            return headers, None
 
         if auth_mode != "basic":
             logger.warning("Unknown callback auth mode '%s'. Sending request without Authorization header.", auth_mode)
-            return headers
+            return headers, None
 
         username = self._settings.response_callback_username
         password = self._settings.response_callback_password
@@ -43,22 +51,39 @@ class ResponseDispatcher:
                 "Basic callback auth is enabled but username/password are missing. "
                 "Sending request without Authorization header."
             )
-            return headers
+            return headers, None
 
         password_with_token = f"{password}{token}"
         credentials = base64.b64encode(
             f"{username}:{password_with_token}".encode("utf-8")
         ).decode("ascii")
         headers["Authorization"] = f"Basic {credentials}"
-        return headers
+        return headers, None
 
     async def _post_payload(self, payload: dict[str, Any]) -> None:
+        headers, token = await self._build_headers()
+
         async with httpx.AsyncClient(timeout=self._settings.response_callback_timeout_seconds) as client:
             response = await client.post(
                 self._settings.response_callback_url,
                 json=payload,
-                headers=self._build_headers(),
+                headers=headers,
             )
+
+            if token is not None and response.status_code in (401, 403):
+                logger.warning(
+                    "Callback rejected the cached bearer token. status=%s. Refreshing and retrying once. message=%s",
+                    response.status_code,
+                    response.text,
+                )
+                self._token_provider.invalidate(token)
+                headers, _ = await self._build_headers()
+                response = await client.post(
+                    self._settings.response_callback_url,
+                    json=payload,
+                    headers=headers,
+                )
+
             logger.info(
                 "Dispatched response payload to callback URL. status=%s url=%s",
                 response.status_code,
