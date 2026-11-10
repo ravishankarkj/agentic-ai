@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     confluence_page_ids: str = ""
     confluence_page_limit: int = 50
 
-    llm_provider: Literal["ollama", "openai"] = "ollama"
+    llm_provider: Literal["ollama", "openai"] = "openai"
     embedding_provider: Literal["ollama", "openai", "watsonx"] = "watsonx"
     truncate_input_tokens: int = 512
 
@@ -29,8 +29,10 @@ class Settings(BaseSettings):
     ollama_embedding_model: str = "nomic-embed-text"
 
     openai_api_key: str = ""
-    openai_chat_model: str = "gpt-4o-mini"
+    openai_chat_model: str = "qwen/qwen3.8-27b"
     openai_embedding_model: str = "text-embedding-3-small"
+
+    groq_base_url: str = "https://api.groq.com/openai/v1"
 
     # Watsonx EMBEDDING
     watsonx_url: str

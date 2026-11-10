@@ -47,7 +47,8 @@ class LLMFactory:
         return ChatOpenAI(
             api_key=self._settings.openai_api_key,
             model=self._settings.openai_chat_model,
-            temperature=0,
+            temperature=0.5,
+            base_url=self._settings.groq_base_url,
         )
 
     def create_embeddings(self) -> Embeddings:
